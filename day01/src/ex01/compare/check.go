@@ -3,93 +3,103 @@ package compare
 import (
 	"ex01/entities"
 	"fmt"
-	"github.com/r3labs/diff/v3"
-	"strconv"
 )
 
-var KeyValForPrint map[string]string
-
 func Check(old *entities.DBReader, new *entities.DBReader) {
-	KeyValForPrint = map[string]string{
-		"Cake":            "cake",
-		"CakeTime":        "cooking time",
-		"CakeIngredients": "ingredient",
-		"IngredientCount": "unit count",
-		"IngredientUnit":  "unit",
-	}
-	changelog, _ := diff.Diff((*old).GetRecipes(), (*new).GetRecipes())
+	oldRecipe := (*old).GetRecipes()
+	newRecipe := (*new).GetRecipes()
+	cakesCompare(oldRecipe, newRecipe)
+}
 
-	for _, val := range changelog {
-		if val.Path[len(val.Path)-1] == "Filename" || val.Path[len(val.Path)-1] == "Local" {
-			continue
-		}
-		fmt.Println(val)
-		if val.Type == "create" {
-			addedItem(&val, old)
-		} else if val.Type == "delete" {
-			removedItem(&val, old)
-		} else if val.Type == "update" {
-			changedItem(&val, old)
-		}
+func ingredientDetailsCompare(oldIngredient, newIngredient *entities.Ingredients, cakeName string) {
+	if oldIngredient.IngredientCount != newIngredient.IngredientCount {
+		fmt.Printf("CHANGED unit count for ingredient \"%s\" for cake \"%s\" - \"%s\" instead of \"%s\"\n",
+			oldIngredient.IngredientName,
+			cakeName,
+			newIngredient.IngredientCount,
+			oldIngredient.IngredientCount)
+	}
+	if oldIngredient.IngredientUnit != newIngredient.IngredientUnit {
+		fmt.Printf("CHANGED unit for ingredient \"%s\" for cake \"%s\" - \"%s\" instead of \"%s\"\n",
+			oldIngredient.IngredientName,
+			cakeName,
+			newIngredient.IngredientUnit,
+			oldIngredient.IngredientUnit)
+	}
+	if oldIngredient.IngredientUnit == "" && newIngredient.IngredientUnit != "" {
+		fmt.Printf("ADDED unit \"%s\" for ingredient \"%s\" for cake \"%s\"\n",
+			newIngredient.IngredientUnit,
+			newIngredient.IngredientName,
+			cakeName)
+	}
+	if newIngredient.IngredientUnit == "" && oldIngredient.IngredientUnit != "" {
+		fmt.Printf("REMOVED unit \"%s\" for ingredient \"%s\" for cake \"%s\"\n",
+			oldIngredient.IngredientUnit,
+			oldIngredient.IngredientName,
+			cakeName)
 	}
 }
 
-func addedItem(item *diff.Change, old *entities.DBReader) {
-	fmt.Printf("ADDED %s\n", item.Path[len(item.Path)-1])
-
-}
-
-func removedItem(item *diff.Change, old *entities.DBReader) {
-	keyHelper := item.Path[len(item.Path)-1]
-	if keyHelper == "IngredientName" {
-		fmt.Printf("REMOVED ")
-	} else {
-		fmt.Printf("REMOVED %s ", KeyValForPrint[item.Path[len(item.Path)-1]])
-	}
-
-	recipe := (*old).GetRecipes()
-	cake := getCake(item.Path, recipe)
-	for i := len(item.Path) - 2; i >= 1; i = i - 2 {
-		if i == 1 {
-			fmt.Printf("for %s \"%s\" ", "cake", cake)
-		} else if i == 3 {
-			ingredient := getIngredient(item.Path, recipe)
-			if keyHelper != "IngredientName" {
-				fmt.Printf("for %s \"%s\" ", KeyValForPrint[item.Path[2]], ingredient)
-			} else {
-				fmt.Printf("%s \"%s\" ", KeyValForPrint[item.Path[2]], ingredient)
+func ingredientCompare(old, new *[]entities.Ingredients, cakeName string) {
+	for _, valueOld := range *old {
+		delete := true
+		for _, valueNew := range *new {
+			if valueOld.IngredientName == valueNew.IngredientName {
+				ingredientDetailsCompare(&valueOld, &valueNew, cakeName)
+				delete = false
+				break
 			}
 		}
-	}
-	fmt.Printf("\n")
-}
-
-func changedItem(item *diff.Change, old *entities.DBReader) {
-	fmt.Printf("CHANGED %s ", KeyValForPrint[item.Path[len(item.Path)-1]])
-	recipe := (*old).GetRecipes()
-	cake := getCake(item.Path, recipe)
-	for i := len(item.Path) - 2; i >= 1; i = i - 2 {
-		if i == 1 {
-			fmt.Printf("for %s \"%s\" ", "cake", cake)
-		} else if i == 3 {
-			ingredient := getIngredient(item.Path, recipe)
-			fmt.Printf("for %s \"%s\" ", KeyValForPrint[item.Path[2]], ingredient)
+		if delete {
+			fmt.Printf("REMOVED ingredient \"%s\" for cake \"%s\"\n", valueOld.IngredientName, cakeName)
 		}
 	}
 
-	fmt.Printf("- \"%s\" instead of \"%s\"\n", item.To, item.From)
-}
-
-func getCake(path []string, recipe *entities.Recipe) string {
-	if len(path) >= 2 {
-		ind, _ := strconv.Atoi(path[1])
-		return recipe.Cake[ind].CakeName
+	for _, valueNew := range *new {
+		add := true
+		for _, valueOld := range *old {
+			if valueNew.IngredientName == valueOld.IngredientName {
+				add = false
+				break
+			}
+		}
+		if add {
+			fmt.Printf("ADDED ingredient \"%s\" for cake \"%s\"\n", valueNew.IngredientName, cakeName)
+		}
 	}
-	return ""
 }
 
-func getIngredient(path []string, recipe *entities.Recipe) string {
-	cakeInd, _ := strconv.Atoi(path[1])
-	ingredientInd, _ := strconv.Atoi(path[3])
-	return recipe.Cake[cakeInd].CakeIngredients[ingredientInd].IngredientName
+func cakesCompare(oldRecipe, newRecipe *entities.Recipe) {
+	for _, valOld := range (*oldRecipe).Cake {
+		delete := true
+		for _, valNew := range (*newRecipe).Cake {
+			if valOld.CakeName == valNew.CakeName {
+				if valOld.CakeTime != valNew.CakeTime {
+					fmt.Printf("CHANGED cooking time for cake \"%s\" - \"%s\" instead of \"%s\"\n",
+						valOld.CakeName,
+						valNew.CakeTime,
+						valOld.CakeTime)
+				}
+				delete = false
+				break
+			}
+		}
+		if delete {
+			fmt.Printf("REMOVED cake \"%s\"\n", valOld.CakeName)
+		}
+	}
+
+	for _, valNew := range (*newRecipe).Cake {
+		add := true
+		for _, valOld := range (*oldRecipe).Cake {
+			if valNew.CakeName == valOld.CakeName {
+				ingredientCompare(&valOld.CakeIngredients, &valNew.CakeIngredients, valNew.CakeName)
+				add = false
+				break
+			}
+		}
+		if add {
+			fmt.Printf("ADDED cake \"%s\"\n", valNew.CakeName)
+		}
+	}
 }
